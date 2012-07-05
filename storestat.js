@@ -10,6 +10,7 @@ var timeSeriesMapper = require('./timeseriesmapper.js');
  * @return {[type]}           [description]
  */
 exports.getStoredKeysStatistics = function(options, cb) {
+  options.step = options.step || 60*1000;
   cubeGet.event('heartbeat(keys, id, bot, mobile)',
     options,
     function(events) {
@@ -23,28 +24,42 @@ exports.getStoredKeysStatistics = function(options, cb) {
 
           event.data.keys.forEach(function(key) {
             emit(key, event);
-          })
+          });
         },
         function(res, current) {
           res.push(current);
           return res;
-        },[]);
+        },function(keys) {
+          return [];
+        });
 
       //compute time series for each key
       var timeSeriesByKeys = {};
       _.each(eventsByKeys, function(events, key) {
         timeSeriesByKeys[key] = mapReduce(events,
-          timeSeriesMapper(60*1000),
+          timeSeriesMapper(options.step),
           function(res, event) {
-            if(!_.include(res._already, event.data.id)) {
-              res._already.push(event.data.id);
-              res.tot ++;
-              if(event.data.mobile) res.mobile ++;
-              if(event.data.bot) res.bot ++;
+            var _res = {
+              tot : res.tot,
+              bot : res.bot,
+              mobile : res.mobile,
+              _already : res._already
+            };
+
+            if(!_.include(_res._already, event.data.id)) {
+              _res._already =  _res._already.concat([event.data.id]);
+              _res.tot ++;
+              if(event.data.mobile) _res.mobile ++;
+              if(event.data.bot) _res.bot ++;
             }
-            return res;
-          },
-          {tot : 0, bot : 0, mobile : 0, _already : []});
+            return _res;
+          }, function(key) {
+            return {
+              tot : 0,
+              bot : 0,
+              mobile : 0,
+              _already : []};
+          });
       });
 
       
